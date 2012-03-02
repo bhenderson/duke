@@ -1,0 +1,8 @@
+History.txt
+Manifest.txt
+README.txt
+Rakefile
+lib/duke.rb
+lib/duke/resource.rb
+test/duke/test_resource.rb
+test/helper.rb
