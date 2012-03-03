@@ -1,6 +1,6 @@
 require 'rack/routes'
-require 'rack/request'
-require 'rack/response'
+require 'duke/request'
+require 'duke/response'
 
 module Duke
   # Public: Class to describe a "hypermedia" object. Subclass this Class to
@@ -20,11 +20,8 @@ module Duke
   #     #DELETE  /users/:id # destroy
   #   end
   class Resource
-    [:Request, :Response].each do |const|
-      mod = Duke.constants.include?(const) ? Duke : Rack
-      # Public: see mod::const
-      const_set const, mod.const_get const
-    end
+    class Request < Duke::Request; end
+    class Response < Duke::Response; end
 
     # GET '/users' HTTP/1.1
     # Accepts: */*
@@ -34,10 +31,10 @@ module Duke
     # if specified as "*" or "json", return json
     # if specified as something else, try and return that, otherwise, 406 (Not
     # Acceptable)
-    accepts_type 'application', true
-    accepts_subtype 'duke', true
-    accepts_format :json, true
-    accepts_version '>= 0'
+    #accepts_type 'application', true
+    #accepts_subtype 'duke', true
+    #accepts_format :json, true
+    #accepts_version '>= 0'
 
     class << self
 
@@ -63,27 +60,97 @@ module Duke
       #          (see Duke::location).
       # action - A String or Symbol (see #initialize).
       #
-      # Returns nothing.
+      # Returns new app.
       def route verb, path, action
-        Rack::Routes.location path, new(verb, action)
+        routes[verb] = action
+        Rack::Routes.location path, new
+      end
+
+      def routes
+        @routes ||= Hash.new
       end
     end
+
+    # Public: Returns the action for the current call.
+    attr_reader :action
+
+    # Public: Returns the response object for the current call.
+    attr_reader :response
+
+    # Public: Returns the request object for the current call.
+    attr_reader :request
 
     # Public: Initialize a Resource.
     #
     # app    - An app to call if verb or action doesn't match. (default: nil)
     # verb   - A String to match exactly with the HTTP request verb.
     # action - A String or Symbol which must correlate to a public_instance_method
-    def initialize app = nil, verb, action
-      @app    = app
-      @action = action
-      @verb   = verb
+    def initialize app = nil
+      @app = app
     end
 
-    def index
-      [
-        { 'user' => '/users/1' },
-      ]
+    # Public: Rack interface.
+    def call(env)
+      dup.call! env
+    end
+
+    # Private: Used for actual call method on dup'd object.
+    def call! env
+      @env = env
+      @request = Request.new(@env)
+      @response = Response.new
+
+      @action = matching_action
+
+      response.write_body invoke
+
+      response.finish
+    end
+
+    # Public: Merge or return current response headers.
+    #
+    # opts - A hash of response headers
+    def headers opts={}
+      response.headers.merge! opts
+    end
+
+    # Private: Calls the current action, handling any errors
+    #
+    # Returns a response body
+    def invoke
+      unless @action
+        status 405
+        return "method not allowed"
+      end
+
+      begin
+        status 200
+        resp = __send__ @action
+        if Array === resp and resp.size == 3
+          st, hd, bd = resp
+          status st
+          headers hd
+          resp
+        else
+          resp
+        end
+      rescue ::Exception => e
+        status 500
+        e.message
+      end
+    end
+
+    # Private: Returns the appropriate action for the current HTTP verb
+    def matching_action
+      self.class.routes[request.request_method]
+    end
+
+    # Public: Set or return the response status for the current response.
+    #
+    # num - An Integer to set the response status. (default: nil)
+    def status num = nil
+      return response.status unless num
+      response.status = num.to_i
     end
   end
 end
