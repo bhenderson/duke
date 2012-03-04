@@ -15,7 +15,7 @@ module Duke
     #   # similar to response.body = ['3']
     #
     # Returns response.body
-    def write_body resp
+    def write_body body
       if body.respond_to? :to_str
         write body.to_str
       elsif body.respond_to?(:each)

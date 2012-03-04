@@ -1,10 +1,10 @@
 = duke
 
-* FIX (url)
+* https://github.com/bhenderson/duke
 
 == DESCRIPTION:
 
-FIX (describe your package)
+Resource centric framework
 
 == FEATURES/PROBLEMS:
 
@@ -20,7 +20,7 @@ FIX (describe your package)
 
 == INSTALL:
 
-* FIX gem install --source http://gems.atti.wc1.yellowpages.com/ duke
+* gem install duke
 
 == DEVELOPERS:
 

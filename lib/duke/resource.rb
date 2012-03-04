@@ -38,6 +38,13 @@ module Duke
 
     class << self
 
+      # Public: rack interface
+      #
+      # Returns rack response
+      def call(env)
+        new.call(env)
+      end
+
       # Public: Defines a DELETE route
       def delete(*a)  route 'DELETE', *a end
 
@@ -54,20 +61,33 @@ module Duke
       def put(*a)     route 'PUT', *a end
 
       # Public: Define a new route for this resource.
+      #   Only one path can be defined globally.
+      #   Each path can have multiple verbs.
+      #   Each path/verb pair can have only one action.
       #
       # verb   - A String (see #initialize).
       # path   - The path to match on for this particular verb/action pair.
       #          (see Duke::location).
       # action - A String or Symbol (see #initialize).
       #
-      # Returns new app.
+      # Returns nothing
       def route verb, path, action
-        routes[verb] = action
-        Rack::Routes.location path, new
+        r_path = routes[path]
+
+        # defining multiple verbs will have no effect
+        Rack::Routes.location path, self.new(nil, path) if r_path.empty?
+
+        r_path[verb] = action
+        nil
       end
 
+      # Private: Hash of routes that have been defined for this resource
+      #
+      # Examples
+      #
+      #   routes[path][verb] = action
       def routes
-        @routes ||= Hash.new
+        @routes ||= Hash.new{|h,k| h[k]={}}
       end
     end
 
@@ -83,10 +103,12 @@ module Duke
     # Public: Initialize a Resource.
     #
     # app    - An app to call if verb or action doesn't match. (default: nil)
-    # verb   - A String to match exactly with the HTTP request verb.
-    # action - A String or Symbol which must correlate to a public_instance_method
-    def initialize app = nil
+    # path   - Private: The path for this resource. This doesn't have any
+    #            meaning for the request as it probably will differ from the actual
+    #            request path.
+    def initialize app = nil, path = nil
       @app = app
+      @__path = path
     end
 
     # Public: Rack interface.
@@ -114,35 +136,36 @@ module Duke
       response.headers.merge! opts
     end
 
-    # Private: Calls the current action, handling any errors
+    # Public: Calls the current action, handling any errors
     #
-    # Returns a response body
+    # Returns the response body
     def invoke
-      unless @action
-        status 405
-        return "method not allowed"
-      end
-
       begin
-        status 200
+        status 200 # set default status
         resp = __send__ @action
         if Array === resp and resp.size == 3
-          st, hd, bd = resp
+          st, hd, resp = resp
           status st
           headers hd
-          resp
-        else
-          resp
         end
+        resp
       rescue ::Exception => e
         status 500
         e.message
       end
     end
 
-    # Private: Returns the appropriate action for the current HTTP verb
+    # Private: The action to perform for this request.
+    #
+    # Returns a Symbol that should be a valid instance method. Defaults to method_not_allowed.
     def matching_action
-      self.class.routes[request.request_method]
+      self.class.routes[@__path][request.request_method] || :method_not_allowed
+    end
+
+    # Public: Set and return appropriate values for HTTP status 405 (Method not allowed)
+    def method_not_allowed
+      status 405
+      "method not allowed"
     end
 
     # Public: Set or return the response status for the current response.
