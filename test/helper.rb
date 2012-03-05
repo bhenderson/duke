@@ -8,7 +8,7 @@ class DukeTestCase < MiniTest::Unit::TestCase
   include Rack::Test::Methods
 
   def app
-    Rack::Routes
+    Duke
   end
 end
 class TestDuke < DukeTestCase; end

@@ -64,6 +64,8 @@ module Duke
       #   Only one path can be defined globally.
       #   Each path can have multiple verbs.
       #   Each path/verb pair can have only one action.
+      # Changes the default behavior of Rack::Routes to use exact matching by
+      #   default. Pass :exact => false to match beginning of the path.
       #
       # verb   - A String (see #initialize).
       # path   - The path to match on for this particular verb/action pair.
@@ -75,7 +77,7 @@ module Duke
         r_path = routes[path]
 
         # defining multiple verbs will have no effect
-        Rack::Routes.location path, self.new(nil, path) if r_path.empty?
+        Rack::Routes.location path, {:exact => true}, self.new(nil, path) if r_path.empty?
 
         r_path[verb] = action
         nil
@@ -88,6 +90,14 @@ module Duke
       #   routes[path][verb] = action
       def routes
         @routes ||= Hash.new{|h,k| h[k]={}}
+      end
+
+      def use middleware, *args, &blk
+        middlewares << [middleware, *args, blk]
+      end
+
+      def middlewares
+        @middlewares ||= []
       end
     end
 
@@ -113,7 +123,9 @@ module Duke
 
     # Public: Rack interface.
     def call(env)
-      dup.call! env
+      app = self.class.middlewares.reverse.
+              inject(dup){|app, (m,a,b)| m.new(app, *a,&b)}
+      app.call! env
     end
 
     # Private: Used for actual call method on dup'd object.
@@ -136,23 +148,18 @@ module Duke
       response.headers.merge! opts
     end
 
-    # Public: Calls the current action, handling any errors
+    # Public: Calls the current action.
     #
     # Returns the response body
     def invoke
-      begin
-        status 200 # set default status
-        resp = __send__ @action
-        if Array === resp and resp.size == 3
-          st, hd, resp = resp
-          status st
-          headers hd
-        end
-        resp
-      rescue ::Exception => e
-        status 500
-        e.message
+      status 200 # set default status
+      resp = __send__ @action
+      if Array === resp and resp.size == 3
+        st, hd, resp = resp
+        status st
+        headers hd
       end
+      resp
     end
 
     # Private: The action to perform for this request.
@@ -162,7 +169,7 @@ module Duke
       self.class.routes[@__path][request.request_method] || :method_not_allowed
     end
 
-    # Public: Set and return appropriate values for HTTP status 405 (Method not allowed)
+    # Private: Set and return appropriate values for HTTP status 405 (Method not allowed)
     def method_not_allowed
       status 405
       "method not allowed"

@@ -3,7 +3,7 @@ require 'helper'
 class TestDuke::TestResource < DukeTestCase
   def setup
     @klass = Duke::Resource
-    app.locations.clear
+    Rack::Routes.locations.clear
   end
 
   def test_call_dups
@@ -37,7 +37,7 @@ class TestDuke::TestResource < DukeTestCase
     delete '/path'
     assert_equal 405, last_response.status
 
-    assert_equal 1, Rack::Routes.locations[:string].size
+    assert_equal 1, Rack::Routes.locations[:exact].size
   end
 
   def test_call_returns_valid_rack_response
@@ -69,5 +69,48 @@ class TestDuke::TestResource < DukeTestCase
 
     get '/path3'
     assert_equal 'hi3', last_response.body
+  end
+
+  def test_404
+    Class.new(@klass) do
+      get '/path', :path
+    end
+
+    #get '/no_path'
+    #assert_equal 404, last_response.status
+  end
+
+  def test_default_to_exact_matching
+    Class.new(@klass) do
+      get '/path', :path
+      def path() 'my path' end
+    end
+
+    #get '/path_extra'
+    #assert_equal 404, last_response.status
+
+    get '/path'
+    assert_equal 'my path', last_response.body
+  end
+
+  def test_adding_middleware
+    Class.new(@klass) do
+      app = Class.new do
+        def initialize(app) @app = app end
+        def call(env)
+          env['test.adding.middleware'] = 'hello'
+          @app.call(env)
+        end
+      end
+      use app
+
+      get '/path', :path
+      def path()
+        env['test.adding.middleware'] + ' world'
+      end
+    end
+
+    get '/path'
+    assert_equal 'hello world', last_response.body
   end
 end
